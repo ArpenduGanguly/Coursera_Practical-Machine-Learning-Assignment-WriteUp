@@ -1,0 +1,194 @@
+---
+#"Practical Machine Learning Assignment WriteUp"
+Author: Arpendu Kumar Ganguly
+date: "29 October 2016"
+output: html_document
+
+#"Project Overview"
+This document was prepared as part of Project assignment for the course:Practical Machine Learning offered as a MOOC by John Hopkins University. The project entailed the conceptual understanding and practical application of various ML Techniques: Decision Trees, Random Forest, Gradient Boosting, Bagging, & cross-validation methods for predicting better out of sample accuracy.  
+
+##I.Project Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. 
+
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
+
+###I.i) Project Introduction
+In this project, we will  use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participant They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+The five ways are exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E). Only Class A corresponds to correct performance.
+
+###I.ii) Research Question
+The goal of this project is to predict the manner in which they did the exercise, i.e., Class A to E. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+##II. Preparing the Environment
+
+The following packages will be used for the ML algorithms in the assignment.
+
+```{r message= FALSE, warning = FALSE}
+library(knitr)
+library(caret )
+library(randomForest)
+library(rattle)
+library(rpart)
+library(rpart.plot)
+library(corrplot)
+library(e1071)
+library(forecast)
+library(AppliedPredictiveModeling)
+set.seed(323321)
+```
+
+
+##III.Loading the data
+
+The train set data is available at:
+```{r}
+trainurl="https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+```
+The test set data is available at:
+```{r}
+testurl="https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+```
+
+Importing the data to the local environment
+```{r}
+pmltr=read.csv(url(trainurl))
+pmlte=read.csv(url(testurl))
+dim(pmltr)
+dim(pmlte)
+```
+
+We have 19,622 rows and 160 coloumns in train data and 20 rows and 160 coloumns in the test data
+
+#IV. Splitting the train data into training and testing sets 
+```{r}
+pmltresplit=createDataPartition(pmltr$classe, p=0.6 ,list = FALSE)
+training=pmltr[pmltresplit,]
+testing=pmltr[-pmltresplit,]
+dim(training)
+dim(testing)
+```
+
+#V. Treatment of Data before model building
+
+Since, there are 160 predictors, we check if we can reduce down the predictor size. We can do this, by elimating the predictors with Zero or Near Zero Variance, 
+Identifying the near zero variance predictors
+```{r}
+NZV1=nearZeroVar(training, saveMetrics = TRUE)
+NZV=nearZeroVar(training)
+```
+
+Removing the near zero variance predictors set from the total set of predictors
+```{r}
+training=training[,-NZV]
+testing=testing[,-NZV]
+dim(training)
+dim(testing)
+```
+
+Treating the data for missing values: Further, a lot of predictors have missing values which is more than 95%. We remove them from the set of predictors
+```{r}
+ALLNAs=sapply(training, function(x) mean(is.na(x)))>0.95
+training=training[,ALLNAs==FALSE]
+testing=testing[,ALLNAs==FALSE]
+dim(training)  
+dim(testing)
+```
+
+We also remove the ID Variables from the list of predictors
+```{r}
+training=training[,-(1:5)]
+testing = testing[,-(1:5)]
+dim(training)  
+dim(testing)
+```
+
+So, after the first level of data treatment, we have been able to scale down the list of predictors from 160 to  54 predictors.
+
+##VI. Expolatory Data Analysis 
+We plot a correlation matrix between the set of predictors, to see if strong relationships exists between them.
+
+```{r echo = FALSE, fig.width = 8.5, fig.height= 10.5}
+corMatrix = cor(training[,-54])
+corrplot(corMatrix, order = "FPC", method = "color", type = "lower", 
+         tl.cex = 0.8, tl.col = rgb(0, 0, 0), main="Correlation Matrix")
+```
+
+Since there, is no distinct correlation patterns coming up, we move to towards building Model Building. Here, we will try three model building methods, 
+1.Decision Trees
+2. Random Forest
+3. Gradient Boosting method
+
+and choose the model based on best out-of-sample accuracy metric. 
+
+##VII. Machine Learning Model Building
+1. With Decision Trees
+```{r, fig.width = 8.5, fig.height= 9.5}
+set.seed(323321)
+modDectree=rpart(classe~.,data=training,method = "class")
+fancyRpartPlot(modDectree, main= "Decision Tree on Classe")
+
+
+modDectreet=predict(modDectree,testing, type ="class")
+confusionMatrix(modDectreet,testing$classe)
+```
+
+With Deicison Trees, we achieve a accuracy of 74.57%
+
+2. With Random Forests
+```{r,}
+set.seed(323321)
+modFitranfor=randomForest(classe~.,data=training)
+predictrf=predict(modFitranfor,testing, type="class")
+confusionMatrix(predictrf,testing$classe)
+```
+
+With Random Forest, we achieve a accuracy of 99.49
+
+To check, which predictors are most important for predicting the classe variable
+```{r, fig.width=6.5, fig.height=8.5}
+varImpPlot(modFitranfor)
+```
+
+
+
+3. With Genralized Boosting Method
+```{r, warning= FALSE, message = FALSE}
+set.seed(323321)
+fitControl=trainControl( method ="repeatedcv", number = 5, repeats = 1)
+
+gbmfit1=train(classe~.,data= training, method ="gbm", trControl=fitControl, verbose=FALSE)
+
+gbmpred=predict(gbmfit1,newdata=testing)
+gbmaccuracytest=confusionMatrix(gbmpred,testing$classe)
+gbmaccuracytest
+```
+
+With Genralized Boosting Method, we achieve a accuracy of 98.36
+
+Hence, we have the accuracy for each model:
+Decision Tree:74.57
+Random Forest:99.49
+Genralized Boosting Method:98.36
+
+Thus, we select Random Forest for prediction in the test data set
+
+##VIII. Prediction in the test data set
+```{r}
+finalpredict=predict(modFitranfor, pmlte, type = "class" )
+finalpredict
+```
+
+
+"Preparing the files for final submission"
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+```
+
